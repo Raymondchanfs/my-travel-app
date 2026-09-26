@@ -34,19 +34,19 @@ with tab_trip:
         col_a, col_b = st.columns(2)
         with col_a:
             name = st.text_input("旅行名稱", old.get("trip_name", ""))
-            dest = st.text_input("目的地", old.get("destination", ""))
             start = st.date_input(
                 "出發日期",
                 pd.to_datetime(old["start_date"]).date()
                 if old.get("start_date")
                 else date.today(),
             )
+            cur = st.text_input("本位幣別", old.get("base_currency", "HKD"))
         with col_b:
+            dest = st.text_input("目的地", old.get("destination", ""))
             end = st.date_input(
                 "回程日期",
                 pd.to_datetime(old["end_date"]).date() if old.get("end_date") else date.today(),
             )
-            cur = st.text_input("本位幣別", old.get("base_currency", "HKD"))
             rate = st.number_input(
                 "預設匯率", min_value=0.01, value=float(old.get("default_exchange_rate") or 1)
             )
