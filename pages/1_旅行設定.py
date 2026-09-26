@@ -11,11 +11,16 @@ t = read_sheet("TripInfo")
 m = read_sheet("Members")
 old = t.iloc[0].to_dict() if len(t) else {}
 
+# --- 安全計算啟用成員數 ---
+active_count = 0
+if not m.empty and "active" in m.columns:
+    active_count = len(m[m.active.astype(str).str.lower().isin(["true", "1", "yes"])])
+
 # --- 🎯 頂部快速指標儀表板 ---
 col1, col2, col3 = st.columns(3)
 col1.metric("📌 當前旅行名稱", old.get("trip_name", "未命名旅行"))
 col2.metric("📍 目的地", old.get("destination", "未設定"))
-col3.metric("👥 啟用成員數", f"{len(m[m.active.astype(str).str.lower().isin(['true', '1', 'yes'])])} 人")
+col3.metric("👥 啟用成員數", f"{active_count} 人")
 st.divider()
 
 # --- 📑 分頁籤設計 (Tabs) ---
@@ -78,21 +83,21 @@ with tab_trip:
 with tab_members:
     st.subheader("👥 成員名單與狀態管理")
     
-    if m.empty:
+    if m.empty or "member_name" not in m.columns:
         st.info("目前尚無成員，請至「新增成員」分頁添加。")
     else:
         for idx, row in m.iterrows():
-            is_active = str(row['active']).lower() in ['true', '1', 'yes']
+            is_active = str(row.get('active', True)).lower() in ['true', '1', 'yes']
             status_badge = "🟢 啟用中" if is_active else "🔴 已停用"
             
             with st.container(border=True):
                 c1, c2, c3 = st.columns([4, 1, 1])
                 with c1:
-                    st.markdown(f"**{row['member_name']}**  |  狀態: `{status_badge}`")
+                    st.markdown(f"**{row.get('member_name', '')}**  |  狀態: `{status_badge}`")
                 with c2:
                     with st.popover("✏️ 編輯"):
-                        with st.form(f"edit_mem_{row['member_id']}"):
-                            edit_name = st.text_input("修改名稱", value=str(row["member_name"]))
+                        with st.form(f"edit_mem_{row.get('member_id', idx)}"):
+                            edit_name = st.text_input("修改名稱", value=str(row.get("member_name", "")))
                             edit_active = st.checkbox("啟用參與分帳", value=is_active)
                             
                             if st.form_submit_button("儲存變更"):
@@ -106,7 +111,7 @@ with tab_members:
                                     st.success("成員更新成功！")
                                     st.rerun()
                 with c3:
-                    if st.button("🗑️ 刪除", key=f"del_mem_{row['member_id']}"):
+                    if st.button("🗑️ 刪除", key=f"del_mem_{row.get('member_id', idx)}"):
                         delete_row("Members", "member_id", row["member_id"])
                         st.success("已刪除成員")
                         st.rerun()
@@ -116,13 +121,13 @@ with tab_add_member:
     st.subheader("➕ 新增同行旅伴")
     
     with st.form("add_member_form", clear_on_submit=True):
-        new_name = st.text_input("新成員名稱 (例如: 成員E)")
+        new_name = st.text_input("新成員名稱 (例如: 成員A)")
         add_ok = st.form_submit_button("✨ 確認新增成員", type="primary")
         
         if add_ok:
             if not new_name.strip():
                 st.error("成員名稱不可空白！")
-            elif not m.empty and new_name.strip() in m.member_name.values:
+            elif not m.empty and "member_name" in m.columns and new_name.strip() in m.member_name.values:
                 st.error("該成員名稱已經存在！")
             else:
                 new_row = pd.DataFrame(
@@ -135,6 +140,8 @@ with tab_add_member:
                         }
                     ]
                 )
-                write_sheet("Members", pd.concat([m, new_row], ignore_index=True))
+                # 確保舊資料與新資料串接順暢
+                updated_m = pd.concat([m, new_row], ignore_index=True) if not m.empty else new_row
+                write_sheet("Members", updated_m)
                 st.success(f"🎉 已成功新增成員：{new_name.strip()}")
                 st.rerun()
