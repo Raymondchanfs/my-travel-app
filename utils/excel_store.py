@@ -15,6 +15,7 @@ def read_sheet(sheet_name: str) -> pd.DataFrame:
             return pd.DataFrame()
         return df
     except Exception as e:
+        st.error(f"讀取 Google 試算表 [{sheet_name}] 失敗: {e}")
         return pd.DataFrame()
 
 def write_sheet(sheet_name: str, df: pd.DataFrame):
