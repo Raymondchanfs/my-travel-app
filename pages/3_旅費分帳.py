@@ -9,9 +9,14 @@ st.title("💰 旅費記帳與智慧分帳")
 
 t = read_sheet("TripInfo")
 m = read_sheet("Members")
-active = m[
-    m.active.astype(str).str.lower().isin(["true", "1", "yes"])
-].member_name.tolist()
+
+# --- 安全取得啟用成員名單 ---
+active = []
+if not m.empty and "member_name" in m.columns and "active" in m.columns:
+    active = m[
+        m.active.astype(str).str.lower().isin(["true", "1", "yes"])
+    ].member_name.tolist()
+
 e = read_sheet("Expenses")
 
 if not active:
@@ -19,10 +24,8 @@ if not active:
     st.stop()
 
 # --- 🎯 頂部快速指標儀表板 ---
-if not e.empty:
+if not e.empty and "base_amount" in e.columns:
     total_hkd = e["base_amount"].sum()
-    paid_dict, share_dict, balance_dict, _ = settlement(e, active)
-    
     col1, col2, col3 = st.columns(3)
     col1.metric("💳 總旅費支出 (HKD)", f"${total_hkd:,.2f}")
     col2.metric("👥 同行啟用人數", f"{len(active)} 人")
@@ -40,7 +43,6 @@ with tab_summary:
     else:
         paid, share, balance, trans = settlement(e, active)
         
-        # 轉換為美化後的 DataFrame
         settle_df = pd.DataFrame([
             {
                 "成員": x,
@@ -56,7 +58,6 @@ with tab_summary:
         st.subheader("💡 最佳找贖建議 (誰該轉帳給誰)")
         if trans:
             trans_df = pd.DataFrame(trans)
-            # 美化欄位名稱
             trans_df.columns = ["付款人 (Debtor)", "收款人 (Creditor)", "轉帳金額 (HKD)"]
             st.dataframe(trans_df, use_container_width=True, hide_index=True)
         else:
@@ -64,12 +65,10 @@ with tab_summary:
 
         st.divider()
         st.subheader("📈 消費類別統計")
-        # 簡單的分類長條圖
         if "category" in e.columns and "base_amount" in e.columns:
             cat_sum = e.groupby("category")["base_amount"].sum()
             st.bar_chart(cat_sum)
 
-        # 匯出按鈕
         st.download_button(
             "📥 匯出完整旅費 CSV 報表", 
             e.to_csv(index=False).encode("utf-8-sig"), 
@@ -87,15 +86,18 @@ with tab_list:
             with st.container(border=True):
                 c1, c2, c3 = st.columns([4, 1, 1])
                 with c1:
-                    st.markdown(f"**{row['item_name']}** (`{row['category']}`)")
-                    st.caption(f"金額: **{row['original_amount']} {row['original_currency']}** (折合 HKD: **${row['base_amount']}**) | 支付者: **{row['payer']}** | 日期: {row['expense_date']}")
+                    st.markdown(f"**{row.get('item_name', '')}** (`{row.get('category', '')}`)")
+                    st.caption(f"金額: **{row.get('original_amount', 0)} {row.get('original_currency', '')}** (折合 HKD: **${row.get('base_amount', 0)}**) | 支付者: **{row.get('payer', '')}** | 日期: {row.get('expense_date', '')}")
                 with c2:
                     with st.popover("✏️ 編輯"):
-                        with st.form(f"edit_ex_{row['expense_id']}"):
-                            new_item = st.text_input("項目名稱", value=str(row["item_name"]))
-                            new_amt = st.number_input("原始金額", value=float(row["original_amount"]))
-                            new_rate = st.number_input("匯率", value=float(row["exchange_rate"]))
-                            new_payer = st.selectbox("付款人", active, index=active.index(row["payer"]) if row["payer"] in active else 0)
+                        with st.form(f"edit_ex_{row.get('expense_id', idx)}"):
+                            new_item = st.text_input("項目名稱", value=str(row.get("item_name", "")))
+                            new_amt = st.number_input("原始金額", value=float(row.get("original_amount", 0)))
+                            new_rate = st.number_input("匯率", value=float(row.get("exchange_rate", 1)))
+                            payer_list = active if active else [row.get("payer", "")]
+                            default_payer_idx = payer_list.index(row["payer"]) if row.get("payer") in payer_list else 0
+                            new_payer = st.selectbox("付款人", payer_list, index=default_payer_idx)
+                            
                             if st.form_submit_button("儲存修改"):
                                 update_row("Expenses", "expense_id", row["expense_id"], {
                                     "item_name": new_item,
@@ -108,7 +110,7 @@ with tab_list:
                                 st.success("修改成功！")
                                 st.rerun()
                 with c3:
-                    if st.button("🗑️ 刪除", key=f"del_ex_{row['expense_id']}"):
+                    if st.button("🗑️ 刪除", key=f"del_ex_{row.get('expense_id', idx)}"):
                         delete_row("Expenses", "expense_id", row["expense_id"])
                         st.success("已刪除")
                         st.rerun()
@@ -139,7 +141,7 @@ with tab_add:
             else:
                 r = {
                     "expense_id": uid("ex"),
-                    "trip_id": t.iloc[0].trip_id if len(t) else "",
+                    "trip_id": t.iloc[0].trip_id if len(t) and "trip_id" in t.columns else "",
                     "expense_date": d,
                     "category": cat,
                     "item_name": item,
@@ -154,6 +156,7 @@ with tab_add:
                     "created_at": pd.Timestamp.now(),
                     "updated_at": pd.Timestamp.now(),
                 }
-                write_sheet("Expenses", pd.concat([e, pd.DataFrame([r])], ignore_index=True))
+                updated_e = pd.concat([e, pd.DataFrame([r])], ignore_index=True) if not e.empty else pd.DataFrame([r])
+                write_sheet("Expenses", updated_e)
                 st.success("🎉 支出新增成功！")
                 st.rerun()
