@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
+from streamlit_gsheets import gsheets
 from datetime import date, datetime
 
 def get_connection():
     # 建立 Google Sheets 連線
-    return st.connection("gsheets", type=GSheetsConnection)
+    return st.connection("gsheets", type="gsheets")
 
 def read_sheet(sheet_name: str) -> pd.DataFrame:
     try:

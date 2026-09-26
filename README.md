@@ -2,7 +2,7 @@
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\activate
+.venv\Scripts\activate (deactivate)
 pip install -r requirements.txt
 python scripts\init_excel.py
 python scripts\seed_debug_data.py
@@ -16,4 +16,5 @@ git add .
 git commit -m "Migrate to Git and Google Sheets backend"
 git branch -M main
 git remote add origin https://github.com/Raymondchanfs/my-travel-app.git
-git push -u origin main
+git remote add origin git@github.com:Raymondchanfs/my-travel-app.git
+git push -u origin main##
