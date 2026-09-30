@@ -4,119 +4,138 @@ import streamlit as st
 from utils.excel_store import read_sheet, write_sheet, update_row, delete_row
 from utils.validators import uid
 
-st.title("🗓️ 曼谷旅行行程規劃")
+st.title("📅 旅遊行程與時間軸規劃")
 
 t = read_sheet("TripInfo")
-if not len(t):
-    st.warning("⚠️ 請先至「旅行設定」頁面設定旅行起訖日期！")
-    st.stop()
+it = read_sheet("Itinerary")
+m = read_sheet("Members")
 
-start = pd.to_datetime(t.iloc[0].start_date).date()
-end = pd.to_datetime(t.iloc[0].end_date).date()
-total_days = (end - start).days + 1
+active_members = []
+if not m.empty and "member_name" in m.columns and "active" in m.columns:
+    active_members = m[m.active.astype(str).str.lower().isin(["true", "1", "yes"])].member_name.tolist()
 
-# 讀取現有行程資料
-data = read_sheet("Itinerary")
+# --- 📑 分頁籤設計 ---
+tab_calendar, tab_list, tab_add = st.tabs(["🗓️ 時間軸行事曆檢視", "📝 行程清單與編輯", "➕ 新增行程項目"])
 
-# --- 🎯 頂部快速指標儀表板 ---
-col1, col2, col3 = st.columns(3)
-col1.metric("📅 旅行起訖", f"{start} ~ {end}")
-col2.metric("⏳ 總天數", f"{total_days} 天")
-col3.metric("📌 已規劃行程數", f"{len(data)} 項")
-st.divider()
-
-# --- 📑 分頁籤設計 (Tabs) ---
-tab_view, tab_add = st.tabs(["🗺️ 依天數檢視行程", "➕ 快速新增行程"])
-
-# ==================== 分頁 1：依天數檢視行程 ====================
-with tab_view:
-    st.subheader("📋 行程總覽與管理")
+# ==================== 分頁 1：時間軸行事曆檢視 (仿行事曆網格) ====================
+with tab_calendar:
+    st.subheader("🗓️ 行程時間軸矩陣")
     
-    if data.empty:
-        st.info("目前尚無任何行程規劃，請至「快速新增行程」分頁添加。")
+    if it.empty:
+        st.info("目前尚無行程資料，請至「新增行程項目」分頁添加。")
     else:
-        # 建立天數篩選器 (例如: 全部顯示、Day 1、Day 2...)
-        day_options = ["全部顯示"] + [f"Day {d}" for d in range(1, total_days + 1)]
-        selected_day = st.selectbox("選擇要檢視的天數", day_options)
-        
-        # 篩選資料
-        filtered_data = data if selected_day == "全部顯示" else data[data["day_number"].astype(str) == selected_day.replace("Day ", "")]
-        
-        if filtered_data.empty:
-            st.info(f"這一天 ({selected_day}) 目前還沒有安排任何活動。")
-        else:
-            # 依照日期與時間排序
-            filtered_data = filtered_data.sort_values(by=["day_number", "itinerary_date"])
+        # 確保必要的欄位存在
+        if "day_index" in it.columns:
+            # 取得所有不重複的天數並排序
+            days = sorted(it["day_index"].dropna().unique())
             
-            for idx, row in filtered_data.iterrows():
-                with st.container(border=True):
-                    c1, c2, c3 = st.columns([4, 1, 1])
-                    with c1:
-                        st.markdown(f"**Day {row['day_number']}** ({row['itinerary_date']}) | 📍 **{row['place']}**")
-                        st.write(f"🏃‍♂️ **活動內容**: {row['activity']}")
-                        if row["note"]:
-                            st.caption(f"📝 備註: {row['note']}")
-                    with c2:
-                        # 彈出式編輯按鈕
-                        with st.popover("✏️ 編輯"):
-                            with st.form(f"edit_it_{row['itinerary_id']}"):
-                                new_date = st.date_input("日期", pd.to_datetime(row["itinerary_date"]).date() if pd.notnull(row["itinerary_date"]) else start, min_value=start, max_value=end)
-                                new_place = st.text_input("地點", value=str(row["place"]))
-                                new_activity = st.text_input("活動", value=str(row["activity"]))
-                                new_note = st.text_input("備註", value=str(row["note"]))
-                                
-                                if st.form_submit_button("儲存變更"):
-                                    new_day_num = (new_date - start).days + 1
-                                    update_row("Itinerary", "itinerary_id", row["itinerary_id"], {
-                                        "itinerary_date": new_date,
-                                        "day_number": new_day_num,
-                                        "place": new_place,
-                                        "activity": new_activity,
-                                        "note": new_note,
-                                        "updated_at": pd.Timestamp.now()
-                                    })
-                                    st.success("行程修改成功！")
-                                    st.rerun()
-                    with c3:
-                        # 刪除按鈕
-                        if st.button("🗑️ 刪除", key=f"del_it_{row['itinerary_id']}"):
-                            delete_row("Itinerary", "itinerary_id", row["itinerary_id"])
-                            st.success("已刪除該行程")
-                            st.rerun()
+            # 建立多欄位佈局，每一天代表一個直式行（類似行事曆的 Day 欄位）
+            cols = st.columns(len(days) if len(days) > 0 else 1)
+            
+            for idx, day in enumerate(days):
+                with cols[idx]:
+                    st.markdown(f"### 📌 Day {int(day)}")
+                    st.divider()
+                    
+                    # 篩選該天的行程並依時間排序
+                    day_items = it[it["day_index"] == day]
+                    if "item_time" in day_items.columns:
+                        day_items = day_items.sort_values(by="item_time", ascending=True)
+                    
+                    for _, row in day_items.iterrows():
+                        time_str = row.get('item_time', '全天')
+                        title_str = row.get('title', '未命名行程')
+                        loc_str = row.get('location', '')
+                        cost_val = row.get('cost', 0)
+                        
+                        # 使用卡片式外框呈現每一個時間點的行程區塊（仿日曆 Event 卡片）
+                        with st.container(border=True):
+                            st.markdown(f"⏰ **{time_str}**")
+                            st.markdown(f"**{title_str}**")
+                            if loc_str:
+                                st.caption(f"📍 {loc_str}")
+                            if pd.notna(cost_val) and float(cost_val) > 0:
+                                st.markdown(f"💰 `預估: ${float(cost_val):,.1f}`")
+        else:
+            st.warning("行程資料格式缺少 day_index 欄位。")
 
-# ==================== 分頁 2：快速新增行程 ====================
+# ==================== 分頁 2：行程清單與編輯 ====================
+with tab_list:
+    st.subheader("📋 行程明細管理 (可編輯與刪除)")
+    
+    if it.empty:
+        st.info("目前沒有行程紀錄。")
+    else:
+        for idx, row in it.iterrows():
+            with st.container(border=True):
+                c1, c2, c3 = st.columns([4, 1, 1])
+                with c1:
+                    st.markdown(f"**Day {row.get('day_index', 1)} | {row.get('item_time', '')} - {row.get('title', '')}**")
+                    st.caption(f"地點: {row.get('location', '未指定')} | 預估花費: ${row.get('cost', 0)} | 備註: {row.get('notes', '')}")
+                with c2:
+                    with st.popover("✏️ 編輯"):
+                        with st.form(f"edit_it_{row.get('item_id', idx)}"):
+                            edit_day = st.number_input("第幾天 (Day)", min_value=1, value=int(row.get("day_index", 1)))
+                            edit_time = st.text_input("時間 (例如 09:30)", value=str(row.get("item_time", "")))
+                            edit_title = st.text_input("行程標題", value=str(row.get("title", "")))
+                            edit_loc = st.text_input("地點", value=str(row.get("location", "")))
+                            edit_cost = st.number_input("預估花費", value=float(row.get("cost", 0)))
+                            edit_notes = st.text_area("備註說明", value=str(row.get("notes", "")))
+                            
+                            if st.form_submit_button("儲存修改"):
+                                update_row("Itinerary", "item_id", row["item_id"], {
+                                    "day_index": edit_day,
+                                    "item_time": edit_time,
+                                    "title": edit_title,
+                                    "location": edit_loc,
+                                    "cost": edit_cost,
+                                    "notes": edit_notes
+                                })
+                                st.success("行程更新成功！")
+                                st.rerun()
+                with c3:
+                    if st.button("🗑️ 刪除", key=f"del_it_{row.get('item_id', idx)}"):
+                        delete_row("Itinerary", "item_id", row["item_id"])
+                        st.success("已刪除行程")
+                        st.rerun()
+
+# ==================== 分頁 3：新增行程項目 ====================
 with tab_add:
-    st.subheader("➕ 新增一日行程或景點")
+    st.subheader("➕ 新增旅遊行程")
     
     with st.form("itinerary_form", clear_on_submit=True):
         col_a, col_b = st.columns(2)
         with col_a:
-            d = st.date_input("活動日期", start, min_value=start, max_value=end)
-            place = st.text_input("地點 / 景點名稱 (例如: 大皇宮)")
+            day_idx = st.number_input("第幾天 (Day)", min_value=1, value=1)
+            item_time = st.text_input("時間 (例如 09:30 或 上午9:30)")
+            title = st.text_input("行程標題 (例如: 大城動物園)")
         with col_b:
-            activity = st.text_input("活動內容 (例如: 參觀玉佛寺、穿泰服)")
-            note = st.text_input("備註 (例如: 穿著須過膝、門票已訂)")
+            location = st.text_input("地點 (例如: Sriayuthaya Lion Park)")
+            cost = st.number_input("預估花費 (HKD)", min_value=0.0, value=0.0)
             
-        submitted = st.form_submit_button("✨ 確認新增行程", type="primary")
+        notes = st.text_area("備註 / 交通方式說明")
         
+        submitted = st.form_submit_button("✨ 確認新增行程", type="primary")
         if submitted:
-            if not place.strip() or not activity.strip():
-                st.error("地點與活動內容不可空白！")
+            if not title.strip():
+                st.error("行程標題不可空白！")
             else:
-                day_num = (d - start).days + 1
-                r = {
-                    "itinerary_id": uid("it"),
-                    "trip_id": t.iloc[0].trip_id,
-                    "day_number": day_num,
-                    "itinerary_date": d,
-                    "start_time": "",
-                    "end_time": "",
-                    "place": place.strip(),
-                    "activity": activity.strip(),
-                    "note": note.strip(),
-                    "created_at": pd.Timestamp.now(),
-                    "updated_at": pd.Timestamp.now(),
-                }
-                write_sheet("Itinerary", pd.concat([data, pd.DataFrame([r])], ignore_index=True))
+                new_row = pd.DataFrame(
+                    [
+                        {
+                            "item_id": uid("it"),
+                            "trip_id": t.iloc[0].trip_id if len(t) and "trip_id" in t.columns else "",
+                            "day_index": day_idx,
+                            "item_time": item_time,
+                            "title": title.strip(),
+                            "location": location.strip(),
+                            "cost": cost,
+                            "notes": notes.strip(),
+                            "created_at": pd.Timestamp.now(),
+                        }
+                    ]
+                )
+                updated_it = pd.concat([it, new_row], ignore_index=True) if not it.empty else new_row
+                write_sheet("Itinerary", updated_it)
                 st.success("🎉 行程新增成功！")
                 st.rerun()
