@@ -93,14 +93,14 @@ with tab_batch:
             key="itinerary_batch_editor"
         )
         
-        if st.button("💾 儲存所有批次變更", type="primary"):
+        # 移至外面，避免被表單包住導致沒有反應
+        if st.button("💾 儲存所有批次變更", type="primary", key="save_batch_btn"):
             try:
-                # 確保所有列都有正確的 itinerary_id 與其他必要欄位
                 processed_rows = []
                 for idx, row in edited_df.iterrows():
                     row_dict = row.to_dict()
                     
-                    # 檢查並補上 itinerary_id
+                    # 檢查並補上 itinerary_id (如果為 None 或空的就產生新的)
                     it_id = row_dict.get("itinerary_id")
                     if pd.isna(it_id) or str(it_id).strip() == "" or str(it_id) == "None":
                         row_dict["itinerary_id"] = uid("it")
@@ -119,10 +119,11 @@ with tab_batch:
                 
                 # 寫回 Google 試算表
                 write_sheet("Itinerary", final_df)
-                st.success("🎉 所有變更已成功同步至 Google 試算表！正在重新整理...")
+                st.success("🎉 所有變更已成功同步至 Google 試算表！")
+                st.balloons()
                 st.rerun()
             except Exception as e:
-                st.error(f"儲存失敗，發生錯誤: {e}")
+                st.error(f"❌ 儲存時發生錯誤: {str(e)}")
 
 # ==================== 分頁 3：單筆清單與編輯 ====================
 with tab_list:
