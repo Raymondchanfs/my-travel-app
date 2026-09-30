@@ -93,34 +93,36 @@ with tab_batch:
         height=300
     )
     
-    if st.button("🚀 確認整批覆蓋並更新至試算表", type="primary", key="confirm_batch_write"):
-        try:
-            from io import StringIO
-            import pandas as pd
-            
-            # 從文字方塊讀取 CSV
-            new_df = pd.read_csv(StringIO(batch_text_input))
-            
-            # 自動補上必要的系統欄位
-            processed_rows = []
-            for _, row in new_df.iterrows():
-                row_dict = row.to_dict()
-                row_dict["itinerary_id"] = uid("it")
-                row_dict["trip_id"] = t.iloc[0].get('trip_id', '') if len(t) and "trip_id" in t.columns else "trip_debug"
-                if "created_at" not in row_dict or pd.isna(row_dict["created_at"]):
-                    row_dict["created_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
-                row_dict["updated_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
-                processed_rows.append(row_dict)
+# 建立 Submit 按鈕並加上轉圈動畫特效
+    if st.button("Submit", type="primary", key="confirm_batch_write"):
+        with st.spinner("🚀 正在儲存並更新至 Google 試算表，請稍候..."):
+            try:
+                from io import StringIO
+                import pandas as pd
                 
-            final_df = pd.DataFrame(processed_rows)
-            
-            # 寫回 Google 試算表
-            write_sheet("Itinerary", final_df)
-            st.success("🎉 成功整批更新 Google 試算表！畫面即將重新整理...")
-            st.balloons()
-            st.rerun()
-        except Exception as e:
-            st.error(f"❌ 格式錯誤或寫入失敗: {str(e)}")
+                # 從文字方塊讀取 CSV
+                new_df = pd.read_csv(StringIO(batch_text_input))
+                
+                # 自動補上必要的系統欄位
+                processed_rows = []
+                for _, row in new_df.iterrows():
+                    row_dict = row.to_dict()
+                    row_dict["itinerary_id"] = uid("it")
+                    row_dict["trip_id"] = t.iloc[0].get('trip_id', '') if len(t) and "trip_id" in t.columns else "trip_debug"
+                    if "created_at" not in row_dict or pd.isna(row_dict["created_at"]):
+                        row_dict["created_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+                    row_dict["updated_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+                    processed_rows.append(row_dict)
+                    
+                final_df = pd.DataFrame(processed_rows)
+                
+                # 寫回 Google 試算表
+                write_sheet("Itinerary", final_df)
+                st.success("🎉 成功整批更新 Google 試算表！畫面即將重新整理...")
+                st.balloons()
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ 格式錯誤或寫入失敗: {str(e)}")
 
 # ==================== 分頁 3：單筆清單與編輯 ====================
 with tab_list:
