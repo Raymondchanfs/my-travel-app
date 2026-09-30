@@ -1,5 +1,6 @@
 # 多人旅行行程與花費分帳 App
 
+
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate (deactivate)
@@ -18,3 +19,8 @@ git branch -M main
 git remote add origin https://github.com/Raymondchanfs/my-travel-app.git
 git remote add origin git@github.com:Raymondchanfs/my-travel-app.git
 git push -u origin main##
+
+
+
+Open App
+https://my-travel-app.streamlit.app/

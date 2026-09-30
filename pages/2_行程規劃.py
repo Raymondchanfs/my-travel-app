@@ -73,57 +73,54 @@ with tab_calendar:
                         if note_str and note_str != 'nan':
                             st.caption(f"📝 {note_str}")
 
-# ==================== 分頁 2：批次表格編輯 (st.data_editor) ====================
+# ==================== 分頁 2：批次文字快速更新 ====================
 with tab_batch:
-    st.subheader("📊 批次修改行程資料")
-    st.info("💡 您可以直接在此表格內點擊儲存格修改多筆資料，修改完成後點擊下方的按鈕即可一鍵儲存！")
+    st.subheader("📊 批次貼上與更新行程資料")
+    st.info("💡 為了避免表格編輯卡住，您可以使用以下格式（CSV 文字），一次過貼上所有行程並點擊按鈕更新！")
     
-    if it.empty:
-        st.info("目前沒有行程可以編輯。")
+    # 預先產生目前所有行程的 CSV 文字格式，方便您複製或參考
+    default_csv_text = ""
+    if not it.empty:
+        export_cols = ["day_num", "start_time", "end_time", "place", "activity", "note"]
+        existing_export = it[[c for c in export_cols if c in it.columns]]
+        default_csv_text = existing_export.to_csv(index=False)
     else:
-        # 選擇要在表格中顯示與編輯的核心欄位
-        display_cols = ["day_num", "start_time", "end_time", "place", "activity", "note", "itinerary_id"]
-        editable_df = it[[col for col in display_cols if col in it.columns]].copy()
-        
-        # 使用 Streamlit 內建的強大互動式編輯器
-        edited_df = st.data_editor(
-            editable_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            key="itinerary_batch_editor"
-        )
-        
-        # 移至外面，避免被表單包住導致沒有反應
-        if st.button("💾 儲存所有批次變更", type="primary", key="save_batch_btn"):
-            try:
-                processed_rows = []
-                for idx, row in edited_df.iterrows():
-                    row_dict = row.to_dict()
-                    
-                    # 檢查並補上 itinerary_id (如果為 None 或空的就產生新的)
-                    it_id = row_dict.get("itinerary_id")
-                    if pd.isna(it_id) or str(it_id).strip() == "" or str(it_id) == "None":
-                        row_dict["itinerary_id"] = uid("it")
-                    
-                    # 補上其他必要系統欄位
-                    if "trip_id" not in row_dict or pd.isna(row_dict["trip_id"]) or str(row_dict["trip_id"]) == "":
-                        row_dict["trip_id"] = t.iloc[0].get('trip_id', '') if len(t) and "trip_id" in t.columns else "trip_debug"
-                    
-                    if "created_at" not in row_dict or pd.isna(row_dict["created_at"]) or str(row_dict["created_at"]) == "":
-                        row_dict["created_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
-                        
-                    row_dict["updated_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
-                    processed_rows.append(row_dict)
+        default_csv_text = "day_num,start_time,end_time,place,activity,note\n1,14:35,15:45,曼谷機場,抵達曼谷與晚餐,辦理入境手續"
+
+    batch_text_input = st.text_area(
+        "編輯行程 CSV 資料 (格式: day_num, start_time, end_time, place, activity, note)",
+        value=default_csv_text,
+        height=300
+    )
+    
+    if st.button("🚀 確認整批覆蓋並更新至試算表", type="primary", key="confirm_batch_write"):
+        try:
+            from io import StringIO
+            import pandas as pd
+            
+            # 從文字方塊讀取 CSV
+            new_df = pd.read_csv(StringIO(batch_text_input))
+            
+            # 自動補上必要的系統欄位
+            processed_rows = []
+            for _, row in new_df.iterrows():
+                row_dict = row.to_dict()
+                row_dict["itinerary_id"] = uid("it")
+                row_dict["trip_id"] = t.iloc[0].get('trip_id', '') if len(t) and "trip_id" in t.columns else "trip_debug"
+                if "created_at" not in row_dict or pd.isna(row_dict["created_at"]):
+                    row_dict["created_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+                row_dict["updated_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+                processed_rows.append(row_dict)
                 
-                final_df = pd.DataFrame(processed_rows)
-                
-                # 寫回 Google 試算表
-                write_sheet("Itinerary", final_df)
-                st.success("🎉 所有變更已成功同步至 Google 試算表！")
-                st.balloons()
-                st.rerun()
-            except Exception as e:
-                st.error(f"❌ 儲存時發生錯誤: {str(e)}")
+            final_df = pd.DataFrame(processed_rows)
+            
+            # 寫回 Google 試算表
+            write_sheet("Itinerary", final_df)
+            st.success("🎉 成功整批更新 Google 試算表！畫面即將重新整理...")
+            st.balloons()
+            st.rerun()
+        except Exception as e:
+            st.error(f"❌ 格式錯誤或寫入失敗: {str(e)}")
 
 # ==================== 分頁 3：單筆清單與編輯 ====================
 with tab_list:
