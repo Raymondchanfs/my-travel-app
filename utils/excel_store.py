@@ -30,12 +30,24 @@ def read_sheet(sheet_name: str) -> pd.DataFrame:
 
 def write_sheet(sheet_name: str, df: pd.DataFrame):
     try:
+        spreadsheet_url = get_spreadsheet_url()
+        if not spreadsheet_url:
+            st.error("找不到試算表網址設定")
+            return
+
+        # 優先使用 st.secrets["gcp_service_account"] 進行連線，避免尋找本地檔案
         if "gcp_service_account" in st.secrets:
-            gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
+            gc = gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
+        elif "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+            # 相容 gsheets 連線設定
+            sec = st.secrets["connections"]["gsheets"]
+            if "type" in sec:
+                gc = gspread.service_account_from_dict(dict(sec))
+            else:
+                gc = gspread.oauth()
         else:
             gc = gspread.oauth()
             
-        spreadsheet_url = get_spreadsheet_url()
         sh = gc.open_by_url(spreadsheet_url)
         
         try:
@@ -45,14 +57,16 @@ def write_sheet(sheet_name: str, df: pd.DataFrame):
             
         df_to_write = df.copy()
         for col in df_to_write.columns:
-            if pd.api.types.is_datetime64_any_dtype(df_to_write[col]) or isinstance(df_to_write[col].iloc[0] if len(df_to_write)>0 else None, (date, datetime)):
-                df_to_write[col] = pd.to_datetime(df_to_write[col]).dt.strftime('%Y-%m-%d %H:%M:%S')
+            if pd.api.types.is_datetime64_any_dtype(df_to_write[col]):
+                df_to_write[col] = df_to_write[col].dt.strftime('%Y-%m-%d %H:%M:%S')
         
+        # 轉換資料格式並寫入
         data = [df_to_write.columns.tolist()] + df_to_write.astype(str).values.tolist()
         worksheet.clear()
         worksheet.update(data)
     except Exception as e:
         st.error(f"寫入 Google 試算表失敗: {e}")
+        raise e  # 確保錯誤能被外層捕捉
 
 def update_row(sheet_name: str, id_col: str, row_id: str, new_values: dict):
     df = read_sheet(sheet_name)
