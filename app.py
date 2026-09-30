@@ -47,7 +47,7 @@ with st.sidebar:
             reload_data()
             st.success("已同步！")
             st.rerun()
-    with col_s2:
+
         if st.button("💾 建立備份", use_container_width=True):
             backup_workbook()
             st.success("備份成功！")
