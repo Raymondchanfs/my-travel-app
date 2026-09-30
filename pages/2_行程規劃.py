@@ -76,9 +76,9 @@ with tab_calendar:
 # ==================== 分頁 2：批次文字快速更新 ====================
 with tab_batch:
     st.subheader("📊 批次貼上與更新行程資料")
-    st.info("💡 為了避免表格編輯卡住，您可以使用以下格式（CSV 文字），一次過貼上所有行程並點擊按鈕更新！")
+    st.info("💡 請在下方文字方塊中貼上您的 CSV 格式行程，點擊 Submit 即可一鍵全面更新！")
     
-    # 預先產生目前所有行程的 CSV 文字格式，方便您複製或參考
+    # 預先產生目前所有行程的 CSV 文字格式
     default_csv_text = ""
     if not it.empty:
         export_cols = ["day_num", "start_time", "end_time", "place", "activity", "note"]
@@ -90,10 +90,10 @@ with tab_batch:
     batch_text_input = st.text_area(
         "編輯行程 CSV 資料 (格式: day_num, start_time, end_time, place, activity, note)",
         value=default_csv_text,
-        height=300
+        height=300,
+        key="batch_csv_textarea"
     )
     
-# 建立 Submit 按鈕並加上轉圈動畫特效
     if st.button("Submit", type="primary", key="confirm_batch_write"):
         with st.spinner("🚀 正在儲存並更新至 Google 試算表，請稍候..."):
             try:
@@ -103,24 +103,41 @@ with tab_batch:
                 # 從文字方塊讀取 CSV
                 new_df = pd.read_csv(StringIO(batch_text_input))
                 
-                # 自動補上必要的系統欄位
+                # 檢查必要欄位
+                expected_cols = ["day_num", "start_time", "end_time", "place", "activity", "note"]
+                for col in expected_cols:
+                    if col not in new_df.columns:
+                        new_df[col] = ""
+                
+                # 自動補上必要的系統欄位與 ID
                 processed_rows = []
                 for _, row in new_df.iterrows():
                     row_dict = row.to_dict()
                     row_dict["itinerary_id"] = uid("it")
                     row_dict["trip_id"] = t.iloc[0].get('trip_id', '') if len(t) and "trip_id" in t.columns else "trip_debug"
-                    if "created_at" not in row_dict or pd.isna(row_dict["created_at"]):
-                        row_dict["created_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+                    row_dict["created_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
                     row_dict["updated_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
                     processed_rows.append(row_dict)
                     
                 final_df = pd.DataFrame(processed_rows)
                 
+                # 強制將欄位順序對齊 Google 試算表的標準格式
+                final_df = final_df[[
+                    "itinerary_id", "trip_id", "day_num", "start_time", 
+                    "end_time", "place", "activity", "note", "created_at", "updated_at"
+                ]]
+                
                 # 寫回 Google 試算表
                 write_sheet("Itinerary", final_df)
-                st.success("🎉 成功整批更新 Google 試算表！畫面即將重新整理...")
+                
+                st.success("🎉 成功整批更新 Google 試算表！")
                 st.balloons()
+                
+                # 延遲一點點並重新整理畫面，確保讀取到最新資料
+                import time
+                time.sleep(1)
                 st.rerun()
+                
             except Exception as e:
                 st.error(f"❌ 格式錯誤或寫入失敗: {str(e)}")
 
