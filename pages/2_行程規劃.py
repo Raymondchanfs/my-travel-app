@@ -76,7 +76,7 @@ with tab_calendar:
 # ==================== 分頁 2：批次表格編輯 (st.data_editor) ====================
 with tab_batch:
     st.subheader("📊 批次修改行程資料")
-    st.info("💡 您可以直接在此表格內點擊儲存格修改多筆資料（如調整時間、地點或活動內容），修改完成後點擊下方的按鈕即可一鍵儲存！")
+    st.info("💡 您可以直接在此表格內點擊儲存格修改多筆資料，修改完成後點擊下方的按鈕即可一鍵儲存！")
     
     if it.empty:
         st.info("目前沒有行程可以編輯。")
@@ -88,32 +88,41 @@ with tab_batch:
         # 使用 Streamlit 內建的強大互動式編輯器
         edited_df = st.data_editor(
             editable_df,
-            num_rows="dynamic",  # 允許直接新增/刪除行
+            num_rows="dynamic",
             use_container_width=True,
             key="itinerary_batch_editor"
         )
         
         if st.button("💾 儲存所有批次變更", type="primary"):
             try:
-                # 將編輯後的資料與原本的完整欄位（如 trip_id, created_at 等）進行合併
-                # 確保不小心被隱藏或沒顯示的系統欄位不會遺失
+                # 確保所有列都有正確的 itinerary_id 與其他必要欄位
+                processed_rows = []
                 for idx, row in edited_df.iterrows():
-                    it_id = row.get("itinerary_id")
+                    row_dict = row.to_dict()
                     
-                    # 如果是新增加的列，自動補上 id 與時間
-                    if pd.isna(it_id) or not str(it_id).startswith("it_"):
-                        edited_df.at[idx, "itinerary_id"] = uid("it")
-                        edited_df.at[idx, "trip_id"] = t.iloc[0].get('trip_id', '') if len(t) and "trip_id" in t.columns else "trip_debug"
-                        edited_df.at[idx, "created_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+                    # 檢查並補上 itinerary_id
+                    it_id = row_dict.get("itinerary_id")
+                    if pd.isna(it_id) or str(it_id).strip() == "" or str(it_id) == "None":
+                        row_dict["itinerary_id"] = uid("it")
+                    
+                    # 補上其他必要系統欄位
+                    if "trip_id" not in row_dict or pd.isna(row_dict["trip_id"]) or str(row_dict["trip_id"]) == "":
+                        row_dict["trip_id"] = t.iloc[0].get('trip_id', '') if len(t) and "trip_id" in t.columns else "trip_debug"
+                    
+                    if "created_at" not in row_dict or pd.isna(row_dict["created_at"]) or str(row_dict["created_at"]) == "":
+                        row_dict["created_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+                        
+                    row_dict["updated_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+                    processed_rows.append(row_dict)
                 
-                edited_df["updated_at"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+                final_df = pd.DataFrame(processed_rows)
                 
                 # 寫回 Google 試算表
-                write_sheet("Itinerary", edited_df)
-                st.success("🎉 所有變更已成功同步至 Google 試算表！")
+                write_sheet("Itinerary", final_df)
+                st.success("🎉 所有變更已成功同步至 Google 試算表！正在重新整理...")
                 st.rerun()
             except Exception as e:
-                st.error(f"儲存失敗: {e}")
+                st.error(f"儲存失敗，發生錯誤: {e}")
 
 # ==================== 分頁 3：單筆清單與編輯 ====================
 with tab_list:
